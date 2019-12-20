@@ -1,0 +1,255 @@
+// automatically generated from `stdlib.fc` `./sw/sw.fc` 
+PROGRAM{
+  DECLPROC loadData
+  DECLPROC saveData
+  DECLPROC pack_record
+  DECLPROC unpack_record
+  DECLPROC pack_timeout
+  DECLPROC unpack_timeout
+  DECLPROC setHashWithInfo
+  DECLPROC setHash
+  DECLPROC rmHash
+  DECLPROC internal_validate
+  71937 DECLMETHOD validate
+  105070 DECLMETHOD get_timeout
+  108001 DECLMETHOD get_info
+  85143 DECLMETHOD seqno
+  80293 DECLMETHOD get_owner
+  DECLPROC recv_internal
+  DECLPROC recv_external
+  loadData PROC:<{
+    c4 PUSH
+    CTOS
+    256 LDU
+    16 LDU
+    1 LDU
+    LDDICT
+    DROP
+  }>
+  saveData PROC:<{
+    NEWC
+    s1 s4 XCHG
+    256 STU
+    s1 s2 XCHG
+    16 STU
+    1 STU
+    STDICT
+    ENDC
+    c4 POP
+  }>
+  pack_record PROC:<{
+    NEWC
+    s1 s2 XCHG
+    32 STU
+    STREF
+    ENDC
+  }>
+  unpack_record PROC:<{
+    CTOS
+    32 LDU
+    LDREF
+    DROP
+  }>
+  pack_timeout PROC:<{
+    NEWC
+    32 STU
+    ENDC
+  }>
+  unpack_timeout PROC:<{
+    CTOS
+    32 PLDU
+  }>
+  setHashWithInfo PROC:<{
+    pack_record CALLDICT
+    s0 s2 XCHG
+    8 PUSHPOW2
+    DICTUSETREF
+  }>
+  setHash PROC:<{
+    pack_timeout CALLDICT
+    s0 s2 XCHG
+    8 PUSHPOW2
+    DICTUSETREF
+  }>
+  rmHash PROC:<{
+    SWAP
+    8 PUSHPOW2
+    DICTUDEL
+    DROP
+  }>
+  internal_validate PROC:<{
+    loadData CALLDICT
+    s2 POP
+    s2 POP
+    s1 s3 XCHG
+    8 PUSHPOW2
+    DICTUGETOPTREF
+    DUP
+    ISNULL
+    IFJMP:<{
+      3 BLKDROP
+      0 PUSHINT
+    }>
+    s0 s2 XCHG
+    1 EQINT
+    IF:<{
+      SWAP
+      unpack_record CALLDICT
+      DROP
+    }>ELSE<{
+      SWAP
+      unpack_timeout CALLDICT
+    }>
+    DUP
+    0 EQINT
+    IFJMP:<{
+      2DROP
+      -1 PUSHINT
+    }>
+    SWAP
+    GREATER
+  }>
+  validate PROC:<{
+    NOW
+    internal_validate CALLDICT
+  }>
+  get_timeout PROC:<{
+    loadData CALLDICT
+    s2 POP
+    s2 POP
+    s1 s2 XCHG
+    8 PUSHPOW2
+    DICTUGETOPTREF
+    DUP
+    ISNULL
+    IFJMP:<{
+      2DROP
+      1 PUSHINT
+    }>
+    SWAP
+    1 EQINT
+    IFJMP:<{
+      unpack_record CALLDICT
+      DROP
+    }>
+    unpack_timeout CALLDICT
+  }>
+  get_info PROC:<{
+    loadData CALLDICT
+    s2 POP
+    s2 POP
+    s1 s2 XCHG
+    8 PUSHPOW2
+    DICTUGETOPTREF
+    DUP
+    ISNULL
+    IFJMP:<{
+      2DROP
+      NULL
+    }>
+    SWAP
+    1 EQINT
+    IFJMP:<{
+      unpack_record CALLDICT
+      NIP
+    }>
+    DROP
+    NULL
+  }>
+  seqno PROC:<{
+    loadData CALLDICT
+    s2 s3 XCHG
+    3 BLKDROP
+  }>
+  get_owner PROC:<{
+    loadData CALLDICT
+    3 BLKDROP
+  }>
+  recv_internal PROC:<{
+    2DROP
+  }>
+  recv_external PROC:<{
+    DUP
+    SEMPTY
+    34 THROWIF
+    loadData CALLDICT
+    s0 s4 XCHG
+    9 PUSHPOW2
+    LDSLICEX
+    DUP
+    HASHSU
+    s0 s2 s5 XC2PU
+    CHKSIGNU
+    35 THROWIFNOT
+    64 LDU
+    NOW
+    32 LSHIFT#
+    s1 s2 XCHG
+    GREATER
+    35 THROWIFNOT
+    16 LDU
+    s3 s1 XCPU
+    EQUAL
+    36 THROWIFNOT
+    s0 s2 XCHG
+    2 LDU
+    OVER
+    3 LESSINT
+    37 THROWIFNOT
+    ACCEPT
+    OVER
+    0 EQINT
+    IFJMP:<{
+      2DROP
+      SWAP
+      INC
+      s0 s1 s3 XCHG3
+      saveData CALLDICT
+    }>
+    LDREF
+    SWAP
+    CTOS
+    256 PLDU
+    s2 PUSH
+    1 EQINT
+    IF:<{
+      s2 POP
+      32 LDU
+      s3 PUSH
+      1 EQINT
+      IF:<{
+        LDREF
+        DROP
+        s3 s6 XCHG
+        setHashWithInfo CALLDICT
+      }>ELSE<{
+        DROP
+        s2 s5 XCHG
+        setHash CALLDICT
+      }>
+    }>ELSE<{
+      NIP
+      SWAP
+      2 EQINT
+      IF:<{
+        s1 s4 XCHG
+        rmHash CALLDICT
+      }>ELSE<{
+        s1 s4 XCHG
+        DROP
+      }>
+    }>
+    OVER
+    16 PUSHPOW2DEC
+    EQUAL
+    IF:<{
+      NIP
+      0 PUSHINT
+    }>ELSE<{
+      SWAP
+    }>
+    INC
+    s0 s3 s3 XCHG3
+    saveData CALLDICT
+  }>
+}END>c

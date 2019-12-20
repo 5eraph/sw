@@ -1,0 +1,47 @@
+"TonUtil.fif" include
+"Asm.fif" include
+
+{ ."usage: " @' $0 type ." <filename-base> <contract-addr> <hash> <timeout> <seq>" cr
+    ."<hash>      - hex represented 256bit number" cr
+    ."<timeout>   - number of seconds after which expiration occurs" cr
+    ."<seq>       - seq number from contract, use get_seq method to find last" cr
+    ."Removes dnsrecord from contract storage" cr
+} : usage
+// 2- -2 and '
+$# 4 - 0< { usage bye } if
+
+false constant bounce
+
+$1 =: file-base
+$2 false parse-load-address =: false 2=: contractAddr 
+$3 parse-int =: hash
+$4 parse-int =: hashTimeout
+$5 parse-int =: seq
+def? $6 { @' $6 parse-int } { 0 } cond constant hashInfo
+
+file-base +".pk" load-keypair nip constant validator_pk
+
+60 constant timeout // timeout 60s
+
+now timeout + 32 << 1- dup =: query_id
+
+<b query_id 64 u, seq 16 u, 1 2 u, <b hash 256 u, b> ref, hashTimeout 32 i, <b hashInfo 1023 i, b> ref, b> constant msg
+
+dup ."signing message: " msg <s csr. cr
+msg hashu validator_pk ed25519_sign_uint constant signing_bin
+
+<b 
+    b{1000100} s, 
+    contractAddr addr, 
+    0 Gram, 
+    b{00} s,
+    signing_bin B, 
+    msg <s s, 
+b>
+
+dup ."External message for setting hash is " <s csr. cr
+2 boc+>B // create bag of cells with crc32 embedded
+dup Bx. cr // prints bag of cells in hex
+
+"queries/sw-sethash.boc" tuck B>file // saves query
+."(Saved set hash query to file " type .")" cr

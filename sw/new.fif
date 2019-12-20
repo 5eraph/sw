@@ -1,0 +1,61 @@
+#!/usr/bin/env fift -s
+"TonUtil.fif" include
+"Asm.fif" include
+
+{ ."usage: " @' $0 type ." <workchain-id> [<filename-base>] [<storeInfo>]" cr
+  ."Creates a new sw validator in the specified workchain, with the controlling private key saved to or loaded from <filename-base>.pk "
+  ."('new-validator.pk' by default)" cr 
+} : usage
+$# 1- -1 and ' usage if
+
+$1 parse-workchain-id =: wc    // set workchain id from command line argument
+
+def? $2 { @' $2 } { "new-validator" } cond constant file-base
+def? $3 { @' $3 } { 1 } cond constant storeInfo
+65536 constant timeout   // init query times out in 65536 seconds
+
+."Creating new sw in workchain " wc . 
+
+// Create new manual validator; source code included from `4.fif`
+"sw.fif" include
+
+<b 
+    file-base +".pk" load-generate-keypair 
+    constant validator_pk B, 
+    0 16 u,
+    storeInfo 1 u,
+    <{ NEWDICT }>s runvmcode drop dict,
+b> // initial data
+
+null // no libraries
+
+<b b{0011} s, 3 roll ref, rot ref, swap dict, b>  // create StateInit
+
+dup ."StateInit: " <s csr. cr
+dup hashu wc swap 2dup 2constant validator_addr
+."new validator address = " 2dup .addr cr
+2dup file-base +".addr" save-address-verbose
+."Non-bounceable address (for init): " 2dup 7 .Addr cr
+."Bounceable address (for later access): " 6 .Addr cr
+now timeout + 32 << 1- dup =: query_id
+."Init query_id is " dup . ."(0x" X._ .")" cr
+
+
+<b query_id 64 u, 0 16 u, 0 2 u, <b validator_pk priv>pub B, b> ref, b>
+dup ."signing message: " <s csr. cr
+dup hashu validator_pk ed25519_sign_uint rot
+
+<b b{1000100} s,
+validator_addr addr, // append addr
+b{000010} s,
+swap 
+<s s, // append initial state
+b{0} s, 
+swap B, // append signature
+swap <s s, // append msg
+b>
+
+dup ."External message for initialization is " <s csr. cr
+2 boc+>B dup Bx. cr
+"queries/create-sw.boc" tuck B>file // saves query
+."(Saved validator creating query to file " type .")" cr

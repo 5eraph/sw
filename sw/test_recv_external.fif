@@ -1,0 +1,14 @@
+"Asm.fif" include
+
+// requires additional changes in sw.fif
+// 1. rename recv_external to main
+// 2. replace now() with static value
+// 3. comment out signature check or add signature addition in code bellow
+
+<b 1 64 u, 0 16 u, 1 2 u, <b 200 256 u, b> ref, 32 32 i, <b 0 1023 i, b> ref, b> <s
+
+PROGRAM{ 
+    "sw.fif" include
+}END>s =: code
+code
+runvmdict .s

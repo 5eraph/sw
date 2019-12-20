@@ -1,0 +1,261 @@
+cell emptyCell() asm "NULL";
+slice emptySlice() asm "NULL";
+
+(int, int, int, cell) loadData() {
+    var cs = get_data().begin_parse();
+    ;; optionaly increase seq number capacity
+    return (cs~load_uint(256), cs~load_uint(16), cs~load_uint(1), cs~load_dict());
+}
+
+() saveData(int owner, int seq, int storesInfo, cell dict) impure {
+    set_data(begin_cell()
+        .store_uint(owner, 256)
+        .store_uint(seq, 16)
+        .store_uint(storesInfo, 1)
+        .store_dict(dict)
+        .end_cell());
+}
+
+cell pack_record(int value, cell info) {
+    return begin_cell().store_uint(value, 32).store_ref(info).end_cell();
+}
+
+(int, cell) unpack_record(cell record) {
+    var cs = record.begin_parse();
+    return (cs~load_uint(32), cs~load_ref());
+}
+
+cell pack_timeout(int value) {
+    return begin_cell().store_uint(value, 32).end_cell();
+}
+
+int unpack_timeout(cell value) {
+    return value.begin_parse().preload_uint(32);
+}
+
+cell setHashWithInfo(cell dict, int hash, int timeout, cell info) {
+    cell _record = pack_record(timeout, info);
+    dict~udict_set_ref(256, hash, _record);
+    return dict;
+}
+
+cell setHash(cell dict, int hash, int timeout) { 
+    dict~udict_set_ref(256, hash, pack_timeout(timeout));
+    return dict;
+}
+
+cell rmHash(cell dict, int hash) {
+    dict~udict_delete?(256, hash);
+    return dict;
+}
+
+;; local testing requires possibility to set _now
+int internal_validate(int hash, int _now) {
+    (var owner, var seq, var storesInfo, var dict) = loadData();
+
+    var recordCell = dict.udict_get_ref(256, hash);
+    if (recordCell.cell_null?()) {
+        return 0;
+    }
+    int timeout = _now - 1; ;; we assume expired by default
+    if (storesInfo == 1) {
+        (timeout, var info) = unpack_record(recordCell);
+    } else {
+        timeout = unpack_timeout(recordCell);
+    }
+   
+    if (timeout == 0) { ;; non expirable records
+        return -1;
+    }
+    return timeout > _now;
+}
+
+;;Public Methods
+int validate(int hash) method_id {
+    return internal_validate(hash, now());
+}
+
+int get_timeout(int hash) method_id {
+    (var owner, var seq, var storesInfo, var dict) = loadData();
+    var recordCell = dict.udict_get_ref(256, hash);
+    if (recordCell.cell_null?()) {
+        return 1; ;; 0 is for non expirable hashes, so we return 1
+    }
+
+    if (storesInfo == 1) {
+        (var timeout, var info) = unpack_record(recordCell);
+        return timeout;
+    } else {
+        return unpack_timeout(recordCell);
+    }
+}
+
+cell get_info(int hash) method_id {
+    (var owner, var seq, var storesInfo, var dict) = loadData();
+    var recordCell = dict.udict_get_ref(256, hash);
+    if (recordCell.cell_null?()) {
+        return emptyCell();
+    }
+    if (storesInfo == 1) {
+        (var timeout, var info) = unpack_record(recordCell);
+        return info;
+    } else {
+        return emptyCell();
+    }
+}
+
+int seqno() method_id {
+    (var owner, var seq, var storesInfo, var store) = loadData();
+    return seq;
+}
+ 
+int get_owner() method_id {
+    (var owner, var seq, var storesInfo, var store) = loadData();
+    return owner;
+}
+
+;; TEST LOCALLY
+;; 1. Comment out recv_internal and recv_external and uncomment main
+;; 2. Run `func <path to stdlibDir>/stdlib.fc sw.fc -o sw/sw.fif && fift -I <path to fift libDir> sw/test_local.fift` 
+;; 3. Execution ends with one on two numbers printed out in terminal
+;;     a) one number - execution completed successfully
+;;     b) two number - execution failed with error code - 2nd number, you should investigate the issues
+;;
+;;() main() impure {
+;;    ;; test data
+;;    var owner = 200;
+;;    var hash = 125;
+;;    var test_now = 255; ;; runvm does not provide now(), so we have to substite
+;;    var info = begin_cell().store_uint(35551258335, 256).end_cell();
+;;    
+;;    ;; init store, storesInfo == 1
+;;    var dict = new_dict();
+;;    var seq = 5;
+;;    
+;;    dict = setHashWithInfo(dict, hash, 0, info); ;; we set timeout zero non expirable to test removal
+;;    saveData(owner, seq, 1, dict);
+;;    
+;;    ;; test data store
+;;    (var storedOwner, var storedSeq, var storesInfo, dict) = loadData();
+;;    throw_unless(1, (get_owner() == owner) & (seqno() == seq) & (storesInfo == 1));
+;;     
+;;    ;; test removed
+;;    dict = rmHash(dict, hash);
+;;    saveData(owner, seq, 1, dict);
+;;    var foundHash = internal_validate(hash, test_now);
+;;    throw_if(2, foundHash);
+;;
+;;    ;; test expired
+;;    dict = setHashWithInfo(dict, hash, test_now - 100, info); ;; we create expired to test validation of expired record
+;;    saveData(owner, seq, 1, dict);
+;;    var foundHash = internal_validate(hash, test_now);
+;;    throw_unless(3, foundHash == 0);
+;;    dict = rmHash(dict, hash);
+;;    saveData(owner, seq, 1, dict);
+;;    
+;;    ;; test non expirable
+;;    dict = setHashWithInfo(dict, hash, 0, info); ;; we create non expirable to test non expired validation
+;;    saveData(owner, seq, 1, dict);
+;;    var foundHash = internal_validate(hash, test_now);
+;;    throw_unless(4, foundHash);
+;;    dict = rmHash(dict, hash);
+;;    saveData(owner, seq, 1, dict);
+;;       
+;;    ;; test expirable
+;;    dict = setHashWithInfo(dict, hash, test_now + 100, info); ;; we create non expired to test non expired validation
+;;    saveData(owner, seq, 1, dict);
+;;    var foundHash = internal_validate(hash, test_now);
+;;    throw_unless(5, foundHash);
+;;    ;; test info 
+;;    var _info = get_info(hash);
+;;    throw_unless(6, cell_hash(info) == slice_hash(_info));          
+;;     
+;;    ;; ================== test 2 ===================
+;;    ;; init store, storesInfo == 0, testing store without info
+;;    dict = new_dict();
+;;    seq = 6;
+;;    dict = setHash(dict, hash, 0); ;; we set timeout zero non expirable to test removal
+;;    saveData(owner + 1, seq, 0, dict); ;; we add 1 to owner to make sure it differs from previous tests
+;;    
+;;    ;; test data store
+;;    (storedOwner, storedSeq, storesInfo, dict) = loadData();
+;;    throw_unless(7, (get_owner() == (owner + 1)) & (seqno() == seq) & (storesInfo == 0));
+;;
+;;    ;; test removed
+;;    dict = rmHash(dict, hash);
+;;    saveData(owner, seq, 0, dict);
+;;    var foundHash = internal_validate(hash, test_now);
+;;    throw_unless(8, foundHash == 0);
+;;
+;;    ;; test expired
+;;    dict = setHash(dict, hash, test_now - 100); ;; we set expired to test validation of expired record
+;;    saveData(owner, seq, 0, dict);
+;;    var foundHash = internal_validate(hash, test_now);
+;;    throw_unless(9, foundHash == 0);
+;;    dict = rmHash(dict, hash);
+;;    saveData(owner, seq, 0, dict);
+;;
+;;    ;; test non expirable
+;;    dict = setHash(dict, hash, 0); ;; we set expired to test validation of expired record
+;;    saveData(owner, seq, 0, dict);
+;;    var foundHash = internal_validate(hash, test_now);
+;;    throw_unless(10, foundHash);
+;;    dict = rmHash(dict, hash);
+;;    saveData(owner, seq, 0, dict);
+;;
+;;    ;; test expirable
+;;    dict = setHash(dict, hash,test_now + 100); ;; we set expired to test validation of expired record
+;;    saveData(owner, seq, 0, dict);
+;;    var foundHash = internal_validate(hash, test_now);
+;;    throw_unless(11, foundHash);
+;;}
+
+;; Subroutines
+() recv_internal(cell in_msg_cell, slice in_msg) impure {
+   ;; do nothing for internal messages
+}
+
+() recv_external(slice in_msg) impure { 
+    throw_if(34, in_msg.slice_empty?()); ;; in_msg has to contain signarture so if empty throw
+
+    (var owner, var seq, var storesInfo, var dict) = loadData();
+    ;; messages are accepted only from owner
+    var signature = in_msg~load_bits(512);
+    throw_unless(35, check_signature(slice_hash(in_msg), signature, owner));
+    
+    var query_id = in_msg~load_uint(64);
+    var bound = (now() << 32);
+    throw_unless(35, query_id > bound);
+
+    var query_seq = in_msg~load_uint(16);
+    throw_unless(36, seq == query_seq);
+
+    int op = in_msg~load_uint(2);
+    throw_unless(37, op < 3); ;; accept only valid ops
+
+    accept_message();
+    if (op == 0) { ;; init msg
+        saveData(owner, query_seq + 1, storesInfo, dict); 
+        return ();
+    }
+
+    var hashC = in_msg~load_ref();
+    var hash = hashC.begin_parse().preload_uint(256);
+    
+    if (op == 1) { ;; set hash
+        var timeout = in_msg~load_uint(32);
+        if (storesInfo == 1) {
+            var info = in_msg~load_ref();
+            dict = setHashWithInfo(dict, hash, timeout, info);
+        } else {
+            dict = setHash(dict, hash, timeout); 
+        }
+    } elseif (op == 2) { ;; remove hash
+        dict = rmHash(dict, hash);
+    }
+    if (query_seq == 65535) { ;; reset query number 
+        query_seq = 0;
+    }
+    saveData(owner, query_seq + 1, storesInfo, dict);
+    return ();
+}
