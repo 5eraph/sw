@@ -14,6 +14,8 @@ SW is implemented as a single company/provider registry of hashes. SC can operat
 
 Code: `sw/sw.fc`
 
+**In case you want to provide only real time and online database this solution is inefficient. Consider adjustment to store only valid hashed without expiration dates. (Reported by [telegram contest issue](https://contest.com/blockchain-2/entry1247#issue10606))**
+
 ### Storage 
 
 We store TS data in following structure:
