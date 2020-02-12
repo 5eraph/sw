@@ -235,6 +235,9 @@ int get_owner() method_id {
 
     accept_message();
     if (op == 0) { ;; init msg
+        if (query_seq == 65535) { ;; reset query number 
+            query_seq = 0;
+        }
         saveData(owner, query_seq + 1, storesInfo, dict); 
         return ();
     }
